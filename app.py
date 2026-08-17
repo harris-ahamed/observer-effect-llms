@@ -182,8 +182,19 @@ def kpi_card(col, lbl, val, sub="", accent=False):
                  f'<div class="val">{val}</div><div class="sub">{sub}</div></div>', unsafe_allow_html=True)
 
 # ============================================================
-# DATA LOADING
+# DATA LOADING - AUTO-LOADS FROM data.xlsx
 # ============================================================
+@st.cache_data(show_spinner="Loading research data...")
+def load_data():
+    import os
+    if os.path.exists("data.xlsx"):
+        df = pd.read_excel("data.xlsx")
+        if "topic" not in df.columns:
+            df["topic"] = "Factual"
+            df["source"] = "TruthfulQA"
+        return df
+    return None
+
 if 'df' not in st.session_state:
     st.markdown("""
     <div style="position:relative;overflow:hidden;background:linear-gradient(125deg,#9B1B30 0%,#7A1526 45%,#340A12 100%);
@@ -196,23 +207,21 @@ if 'df' not in st.session_state:
       <p style="color:#F6CDD5;margin:.55rem 0 0;font-size:1.06rem;">Do AI models behave differently based on who they think is watching?
          Upload your data to reveal the answer.</p>
     </div>""", unsafe_allow_html=True)
-    section("Upload your responses")
-    ups = st.file_uploader("Drop your Excel file(s) here — one file or multiple per-model files",
-                           type=["xlsx"], accept_multiple_files=True, label_visibility="collapsed")
-    if ups:
-        frames = []
-        for u in ups:
-            f = pd.read_excel(u)
-            # auto-tag files without topic column (e.g. TruthfulQA responses.xlsx)
-            if 'topic' not in f.columns:
-                f['topic'] = 'Factual'
-                f['subject'] = 'truthful_qa'
-                f['source'] = 'TruthfulQA'
-            frames.append(f)
-        st.session_state['df'] = measure(pd.concat(frames, ignore_index=True))
+    raw = load_data()
+    if raw is not None:
+        st.session_state['df'] = measure(raw)
         st.rerun()
-    st.info("You can upload one combined file OR multiple per-model files (Ctrl+click). The dashboard merges them automatically.")
-    st.stop()
+    else:
+        st.info("Upload your responses file to begin.")
+        ups = st.file_uploader("Drop Excel file(s)", type=["xlsx"], accept_multiple_files=True)
+        if ups:
+            frames = [pd.read_excel(u) for u in ups]
+            merged = pd.concat(frames, ignore_index=True)
+            if "topic" not in merged.columns:
+                merged["topic"] = "Factual"
+            st.session_state['df'] = measure(merged)
+            st.rerun()
+        st.stop()
 
 df = st.session_state['df']
 ctxs = present_ctx(df)
